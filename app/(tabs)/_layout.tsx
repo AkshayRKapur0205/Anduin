@@ -1,9 +1,9 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -13,8 +13,9 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      screenOptions={{
+      screenOptions={({ route }) => ({
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarInactiveTintColor: '#A1CEDC',
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
@@ -23,23 +24,34 @@ export default function TabLayout() {
             // Use a transparent background on iOS to show the blur effect
             position: 'absolute',
           },
-          default: {},
+          default: {
+            backgroundColor: '#fff',
+            borderTopWidth: 0,
+            height: 60,
+          },
         }),
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
-        }}
-      />
+        tabBarIcon: ({ color, size, focused }) => {
+          switch (route.name) {
+            case 'index':
+              return <Ionicons name={focused ? 'search' : 'search-outline'} size={size} color={color} />;
+            case 'explore':
+              return <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />;
+            case 'import':
+              return <Feather name="download" size={size} color={color} />;
+            case 'community':
+              return <MaterialCommunityIcons name={focused ? 'account-group' : 'account-group-outline'} size={size} color={color} />;
+            case 'account':
+              return <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />;
+            default:
+              return null;
+          }
+        },
+      })}>
+      <Tabs.Screen name="index" options={{ title: 'Explore' }} />
+      <Tabs.Screen name="explore" options={{ title: 'Home' }} />
+      <Tabs.Screen name="import" options={{ title: 'Import' }} />
+      <Tabs.Screen name="community" options={{ title: 'Community' }} />
+      <Tabs.Screen name="account" options={{ title: 'Account' }} />
     </Tabs>
   );
 }
