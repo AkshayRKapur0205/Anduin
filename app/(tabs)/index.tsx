@@ -271,28 +271,36 @@ export default function HomeScreen() {
 				]}
 			>
 				<TouchableWithoutFeedback onPress={cardExpanded ? undefined : openModal}>
-					<View style={{ width: '100%', height: CARD_HEIGHT, overflow: 'hidden' }}>
-						<Image source={dish.image} style={[styles.dishImage, { borderRadius: 0, height: CARD_HEIGHT }]} />
-						<View style={styles.overlay} pointerEvents="none">
-							<Text style={styles.dishTitle}>{dish.title}</Text>
-							<Text style={styles.likes}>{dish.likes} Likes</Text>
+					{cardExpanded ? (
+						<ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 0 }}>
+							<View style={{ width: '100%' }}>
+								<Image source={dish.image} style={{ width: '100%', aspectRatio: 1.2, borderTopLeftRadius: 24, borderTopRightRadius: 24 }} />
+								<View style={[styles.overlay, { position: 'absolute', top: 0, left: 0, right: 0, height: '100%' }]} pointerEvents="none">
+									<Text style={styles.dishTitle}>{dish.title}</Text>
+									<Text style={styles.likes}>{dish.likes} Likes</Text>
+								</View>
+							</View>
+							<View style={[styles.infoSectionStatic, { minHeight: 260, backgroundColor: '#222', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginTop: 0, paddingTop: 32 }]}>
+								<Text style={[styles.infoSectionTitle, { color: '#A1CEDC', fontSize: 22 }]}>Notes</Text>
+								<Text style={[styles.infoSectionText, { color: '#fff', fontSize: 17, marginBottom: 12 }]}>No notes yet.</Text>
+								<Text style={[styles.infoSectionTitle, { color: '#A1CEDC', fontSize: 22 }]}>Ingredients</Text>
+								{dish.ingredients.map((ing, i) => (
+									<Text key={i} style={[styles.infoSectionText, { color: '#fff', fontSize: 17 }]}>- {ing}</Text>
+								))}
+								<Text style={[styles.infoSectionTitle, { color: '#A1CEDC', fontSize: 22 }]}>Directions</Text>
+								<Text style={[styles.infoSectionText, { color: '#fff', fontSize: 17 }]}>{dish.directions}</Text>
+							</View>
+						</ScrollView>
+					) : (
+						<View style={{ width: '100%', height: CARD_HEIGHT, overflow: 'hidden' }}>
+							<Image source={dish.image} style={[styles.dishImage, { borderRadius: 0, height: CARD_HEIGHT }]} />
+							<View style={styles.overlay} pointerEvents="none">
+								<Text style={styles.dishTitle}>{dish.title}</Text>
+								<Text style={styles.likes}>{dish.likes} Likes</Text>
+							</View>
 						</View>
-					</View>
+					)}
 				</TouchableWithoutFeedback>
-				{cardExpanded && (
-					<ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 24 }}>
-						<View style={styles.infoSectionStatic}>
-							<Text style={styles.infoSectionTitle}>Notes</Text>
-							<Text style={styles.infoSectionText}>No notes yet.</Text>
-							<Text style={styles.infoSectionTitle}>Ingredients</Text>
-							{dish.ingredients.map((ing, i) => (
-								<Text key={i} style={styles.infoSectionText}>- {ing}</Text>
-							))}
-							<Text style={styles.infoSectionTitle}>Directions</Text>
-							<Text style={styles.infoSectionText}>{dish.directions}</Text>
-						</View>
-					</ScrollView>
-				)}
 				{cardExpanded && (
 					<TouchableWithoutFeedback onPress={closeModal}>
 						<View style={styles.closeIconContainerAbsolute}>
