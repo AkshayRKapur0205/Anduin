@@ -1,27 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Image } from 'expo-image';
 import { Platform, StyleSheet, View, Text, PanResponder, Animated, Dimensions, ScrollView, TouchableWithoutFeedback, Easing } from 'react-native';
-
-const dishes = [
-	{
-		id: 1,
-		title: 'Spaghetti Carbonara',
-		image: require('@/assets/images/react-logo.png'),
-		author: 'Chef Mario',
-		likes: 120,
-		ingredients: ['Spaghetti', 'Eggs', 'Pancetta', 'Parmesan', 'Pepper'],
-		directions: '1. Boil pasta. 2. Cook pancetta. 3. Mix with eggs and cheese. 4. Combine.',
-	},
-	{
-		id: 2,
-		title: 'Avocado Toast',
-		image: require('@/assets/images/partial-react-logo.png'),
-		author: 'Chef Anna',
-		likes: 87,
-		ingredients: ['Bread', 'Avocado', 'Salt', 'Pepper', 'Lemon'],
-		directions: '1. Toast bread. 2. Mash avocado. 3. Spread and season.',
-	},
-];
+import DishDetails from '../components/DishDetails';
+import SwipeIndicator from '../components/SwipeIndicator';
+import ExpandedDishCard from '../components/ExpandedDishCard';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 
 // Place these constants above the StyleSheet.create call
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -37,6 +21,8 @@ const NAV_BAR_HEIGHT = 80;
 const panResponder = React.createRef();
 
 export default function HomeScreen() {
+	const [dishes, setDishes] = useState<any[]>([]);
+	const [loading, setLoading] = useState(true);
 	const [currentIndex, setCurrentIndex] = useState(0);
 	const [swipeIndicator, setSwipeIndicator] = useState<'left' | 'right' | null>(null);
 	const [cardExpanded, setCardExpanded] = useState(false);
@@ -223,6 +209,58 @@ export default function HomeScreen() {
 		});
 	}
 
+	useEffect(() => {
+		const fetchDishes = async () => {
+			try {
+				const querySnapshot = await getDocs(collection(db, 'Dishes'));
+				const fetchedDishes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+				console.log('Fetched dishes from Firestore:', fetchedDishes); // DEBUG LOG
+				setDishes(fetchedDishes);
+			} catch (error) {
+				console.error('Error fetching dishes:', error);
+			} finally {
+				setLoading(false);
+			}
+		};
+		fetchDishes();
+	}, []);
+
+	// Helper to resolve image source
+	const getImageSource = (image: string | undefined) => {
+		const localImages: Record<string, any> = {
+			'react-logo.png': require('@/assets/images/react-logo.png'),
+			'partial-react-logo.png': require('@/assets/images/partial-react-logo.png'),
+		};
+		if (image && localImages[image]) {
+			return localImages[image];
+		}
+		// Use a default placeholder if image is missing or not mapped
+		return require('@/assets/images/react-logo.png');
+	};
+
+	// Helper to get a dish property with fallback
+	const getDishProp = (dish: any, prop: string, fallback: any = 'Error: Not found') => {
+		if (dish && dish[prop] !== undefined && dish[prop] !== null && dish[prop] !== '') {
+			return dish[prop];
+		}
+		return fallback;
+	};
+
+	if (loading) {
+		return (
+			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+				<Text>Loading dishes...</Text>
+			</View>
+		);
+	}
+	if (dishes.length === 0) {
+		return (
+			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+				<Text>No dishes found.</Text>
+			</View>
+		);
+	}
+
 	return (
 		<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff', paddingBottom: 0 }}>
 			{/* Render the next card behind the current card */}
@@ -236,7 +274,7 @@ export default function HomeScreen() {
 						borderRadius: cardAnimBorderRadius,
 						position: 'absolute',
 						left: '5%',
-						top: '15%',
+						top: '20%',
 						zIndex: 0,
 						opacity: 0.5,
 						backgroundColor: '#222',
@@ -247,10 +285,10 @@ export default function HomeScreen() {
 					},
 				]}
 			>
-				<Image source={dishes[nextIndex].image} style={[styles.dishImage, { borderRadius: 0, opacity: 0.7 }]} />
+				<Image source={getImageSource(dishes[nextIndex].image)} style={[styles.dishImage, { borderRadius: 0, opacity: 0.7 }]} />
 				<View style={styles.overlay} pointerEvents="none">
-					<Text style={styles.dishTitle}>{dishes[nextIndex].title}</Text>
-					<Text style={styles.likes}>{dishes[nextIndex].likes} Likes</Text>
+					<Text style={styles.dishTitle}>{getDishProp(dishes[nextIndex], 'title')}</Text>
+					<Text style={styles.likes}>{getDishProp(dishes[nextIndex], 'likes')} Likes</Text>
 				</View>
 			</Animated.View>
 			<Animated.View
@@ -272,53 +310,20 @@ export default function HomeScreen() {
 			>
 				<TouchableWithoutFeedback onPress={cardExpanded ? undefined : openModal}>
 					{cardExpanded ? (
-						<ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ padding: 0 }}>
-							<View style={{ width: '100%' }}>
-								<Image source={dish.image} style={{ width: '100%', aspectRatio: 1.2, borderTopLeftRadius: 24, borderTopRightRadius: 24 }} />
-								<View style={[styles.overlay, { position: 'absolute', top: 0, left: 0, right: 0, height: '100%' }]} pointerEvents="none">
-									<Text style={styles.dishTitle}>{dish.title}</Text>
-									<Text style={styles.likes}>{dish.likes} Likes</Text>
-								</View>
-							</View>
-							<View style={[styles.infoSectionStatic, { minHeight: 260, backgroundColor: '#222', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginTop: 0, paddingTop: 32 }]}>
-								<Text style={[styles.infoSectionTitle, { color: '#A1CEDC', fontSize: 22 }]}>Notes</Text>
-								<Text style={[styles.infoSectionText, { color: '#fff', fontSize: 17, marginBottom: 12 }]}>No notes yet.</Text>
-								<Text style={[styles.infoSectionTitle, { color: '#A1CEDC', fontSize: 22 }]}>Ingredients</Text>
-								{dish.ingredients.map((ing, i) => (
-									<Text key={i} style={[styles.infoSectionText, { color: '#fff', fontSize: 17 }]}>- {ing}</Text>
-								))}
-								<Text style={[styles.infoSectionTitle, { color: '#A1CEDC', fontSize: 22 }]}>Directions</Text>
-								<Text style={[styles.infoSectionText, { color: '#fff', fontSize: 17 }]}>{dish.directions}</Text>
-							</View>
-						</ScrollView>
+						<ExpandedDishCard dish={dish} onClose={closeModal} />
 					) : (
-						<View style={{ width: '100%', height: CARD_HEIGHT, overflow: 'hidden' }}>
-							<Image source={dish.image} style={[styles.dishImage, { borderRadius: 0, height: CARD_HEIGHT }]} />
+						<View style={{ width: '100%', height: CARD_HEIGHT, overflow: 'hidden' }} {...(panResponder.current && (panResponder.current as any).panHandlers)}>
+							<Image source={getImageSource(dish.image)} style={[styles.dishImage, { borderRadius: 0, height: CARD_HEIGHT }]} />
 							<View style={styles.overlay} pointerEvents="none">
-								<Text style={styles.dishTitle}>{dish.title}</Text>
-								<Text style={styles.likes}>{dish.likes} Likes</Text>
+								<Text style={styles.dishTitle}>{getDishProp(dish, 'title')}</Text>
+								<Text style={styles.likes}>{getDishProp(dish, 'likes')} Likes</Text>
 							</View>
 						</View>
 					)}
 				</TouchableWithoutFeedback>
-				{cardExpanded && (
-					<TouchableWithoutFeedback onPress={closeModal}>
-						<View style={styles.closeIconContainerAbsolute}>
-							<Text style={styles.closeIcon}>✕</Text>
-						</View>
-					</TouchableWithoutFeedback>
-				)}
 			</Animated.View>
-			{showLeftIndicator && (
-				<View style={styles.indicatorLeft} pointerEvents="none">
-					<Text style={styles.indicatorText}>✗</Text>
-				</View>
-			)}
-			{showRightIndicator && (
-				<View style={styles.indicatorRight} pointerEvents="none">
-					<Text style={styles.indicatorText}>✓</Text>
-				</View>
-			)}
+			<SwipeIndicator direction="left" visible={showLeftIndicator} />
+			<SwipeIndicator direction="right" visible={showRightIndicator} />
 		</View>
 	);
 }
@@ -538,3 +543,6 @@ const styles = StyleSheet.create({
 		marginLeft: 8,
 	},
 });
+
+// NOTE: All dish info (title, ingredients, author, likes, directions, etc.) is now sourced from Firestore via the 'dishes' array.
+// There should be no local hardcoded dish data in this file.
