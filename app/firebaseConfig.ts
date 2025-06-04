@@ -3,12 +3,12 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAibpWTKsk1XU7eFnzmMovkQtfAbkZy6Ro",
-  authDomain: "anduin-56b42.firebaseapp.com",
-  projectId: "anduin-56b42",
-  storageBucket: "anduin-56b42.firebasestorage.app",
-  messagingSenderId: "91913026172",
-  appId: "1:91913026172:web:0caa8a3992e4bfc51227f9"
+  apiKey: process.env.FIREBASE_API_KEY || 'MISSING_FIREBASE_API_KEY',
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || 'MISSING_FIREBASE_AUTH_DOMAIN',
+  projectId: process.env.FIREBASE_PROJECT_ID || 'MISSING_FIREBASE_PROJECT_ID',
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'MISSING_FIREBASE_STORAGE_BUCKET',
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || 'MISSING_FIREBASE_MESSAGING_SENDER_ID',
+  appId: process.env.FIREBASE_APP_ID || 'MISSING_FIREBASE_APP_ID',
 };
 
 // Initialize Firebase

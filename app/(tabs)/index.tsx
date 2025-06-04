@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet, View, Text, PanResponder, Animated, Dimensions, ScrollView, TouchableWithoutFeedback, Easing } from 'react-native';
+import { Platform, StyleSheet, View, Text, PanResponder, Animated, Dimensions, ScrollView, TouchableWithoutFeedback, Easing, RefreshControl } from 'react-native';
 import DishDetails from '../components/DishDetails';
 import SwipeIndicator from '../components/SwipeIndicator';
 import ExpandedDishCard from '../components/ExpandedDishCard';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { supabase } from '../supabaseClient';
+import FiltersBar from '../components/FiltersBar';
 
 // Place these constants above the StyleSheet.create call
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -109,7 +109,32 @@ export default function HomeScreen() {
 		outputRange: [1, 0.96],
 	});
 
-	const dish = dishes[currentIndex];
+	// Interpolated values for back card animation
+	const backCardInterpolatedScale = position.x.interpolate({
+		inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+		outputRange: [1, 0.85, 1],
+		// Clamp so it doesn't overshoot
+		extrapolate: 'clamp',
+	});
+	const backCardInterpolatedTranslateY = position.x.interpolate({
+		inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+		outputRange: [0, CARD_HEIGHT * 0.04, 0],
+		extrapolate: 'clamp',
+	});
+
+	// Helper to get the next dish index, returns -1 if only one dish left or at end
+	const getNextIndex = (dir: 'left' | 'right') => {
+		if (dishes.length === 0) return -1;
+		if (dir === 'right') {
+			return (currentIndex + 1) < dishes.length ? (currentIndex + 1) : -1;
+		} else {
+			return (currentIndex - 1) >= 0 ? (currentIndex - 1) : -1;
+		}
+	};
+
+	const nextIndex = getNextIndex('right');
+	const prevIndex = getNextIndex('left');
+	const dish = dishes[currentIndex] || null;
 
 	// Use a derived value for swipe indicator visibility
 	const [dragX, setDragX] = useState(0);
@@ -139,85 +164,80 @@ export default function HomeScreen() {
 		}
 	}, [dragX]);
 
-	// Helper to get the next dish index
-	const getNextIndex = (dir: 'left' | 'right') => {
-		if (dir === 'right') {
-			return (currentIndex + 1) % dishes.length;
-		} else {
-			return (currentIndex - 1 + dishes.length) % dishes.length;
-		}
-	};
-
-	// Calculate the next card index for both directions
-	const nextIndex = getNextIndex('right');
-	const prevIndex = getNextIndex('left');
-
 	// Track if a tap occurred
 	const tapStart = React.useRef<{ x: number; y: number } | null>(null);
 
 	// PanResponder setup
-	if (!panResponder.current) {
-		panResponder.current = PanResponder.create({
-			onStartShouldSetPanResponder: () => true,
-			onPanResponderGrant: (evt) => {
-				tapStart.current = {
-					x: evt.nativeEvent.pageX,
-					y: evt.nativeEvent.pageY,
-				};
-			},
-			onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 10,
-			onPanResponderMove: Animated.event([
-				null,
-				{ dx: position.x },
-			],
-			{ useNativeDriver: false }),
-			onPanResponderRelease: (evt, gesture) => {
-				if (Math.abs(gesture.dx) < 10 && Math.abs(gesture.dy) < 10) {
-					openModal();
+	const panResponderInstance = React.useMemo(() => PanResponder.create({
+		onStartShouldSetPanResponder: () => true,
+		onPanResponderGrant: (evt) => {
+			tapStart.current = {
+				x: evt.nativeEvent.pageX,
+				y: evt.nativeEvent.pageY,
+			};
+		},
+		onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 10,
+		onPanResponderMove: Animated.event([
+			null,
+			{ dx: position.x },
+		],
+		{ useNativeDriver: false }),
+		onPanResponderRelease: (evt, gesture) => {
+			if (Math.abs(gesture.dx) < 10 && Math.abs(gesture.dy) < 10) {
+				openModal();
+				position.setValue({ x: 0, y: 0 });
+				return;
+			}
+
+			// Only allow swiping if there is a next card (not on the last card)
+			if ((gesture.dx > 120 || gesture.dx < -120) && currentIndex < dishes.length - 1) {
+				setSwipeIndicator(gesture.dx > 0 ? 'right' : 'left');
+				Animated.timing(position, {
+					toValue: { x: gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH, y: 0 },
+					duration: 200,
+					useNativeDriver: false,
+				}).start(() => {
 					position.setValue({ x: 0, y: 0 });
-					return;
-				}
-				if (gesture.dx > 120) {
-					setSwipeIndicator('right');
-					Animated.timing(position, {
-						toValue: { x: SCREEN_WIDTH, y: 0 },
-						duration: 200,
-						useNativeDriver: false,
-					}).start(() => {
-						position.setValue({ x: 0, y: 0 });
-						setCurrentIndex((prev) => (prev + 1) % dishes.length);
-						setTimeout(() => setSwipeIndicator(null), 400);
-					});
-				} else if (gesture.dx < -120) {
-					setSwipeIndicator('left');
-					Animated.timing(position, {
-						toValue: { x: -SCREEN_WIDTH, y: 0 },
-						duration: 200,
-						useNativeDriver: false,
-					}).start(() => {
-						position.setValue({ x: 0, y: 0 });
-						setCurrentIndex((prev) => (prev + 1) % dishes.length);
-						setTimeout(() => setSwipeIndicator(null), 400);
-					});
-				} else {
-					Animated.spring(position, {
-						toValue: { x: 0, y: 0 },
-						useNativeDriver: false,
-					}).start();
-				}
-			},
-		});
-	}
+					setCurrentIndex((prev) => prev + 1);
+					setTimeout(() => setSwipeIndicator(null), 400);
+				});
+			// If on the last card, allow swipe to go to 'no more dishes' state
+			} else if ((gesture.dx > 120 || gesture.dx < -120) && currentIndex === dishes.length - 1) {
+				setSwipeIndicator(gesture.dx > 0 ? 'right' : 'left');
+				Animated.timing(position, {
+					toValue: { x: gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH, y: 0 },
+					duration: 200,
+					useNativeDriver: false,
+				}).start(() => {
+					position.setValue({ x: 0, y: 0 });
+					setCurrentIndex((prev) => prev + 1); // dish = null, triggers 'no more dishes' screen
+					setTimeout(() => setSwipeIndicator(null), 400);
+				});
+			} else {
+				Animated.spring(position, {
+					toValue: { x: 0, y: 0 },
+					useNativeDriver: false,
+				}).start();
+			}
+		},
+	}), [currentIndex, dishes.length]);
 
 	useEffect(() => {
+		console.log('Supabase URL:', process.env.EXPO_PUBLIC_SUPABASE_URL);
+		console.log('Supabase ANON KEY:', process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY);
 		const fetchDishes = async () => {
 			try {
-				const querySnapshot = await getDocs(collection(db, 'Dishes'));
-				const fetchedDishes = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-				console.log('Fetched dishes from Firestore:', fetchedDishes); // DEBUG LOG
-				setDishes(fetchedDishes);
+				const { data, error } = await supabase.from('dishes').select('*');
+				if (error) {
+					console.error('Error fetching dishes from Supabase:', error);
+					setDishes([]);
+				} else {
+					console.log('Fetched dishes from Supabase:', data); // DEBUG LOG
+					setDishes(data || []);
+				}
 			} catch (error) {
-				console.error('Error fetching dishes:', error);
+				console.error('Error fetching dishes (exception):', error);
+				setDishes([]);
 			} finally {
 				setLoading(false);
 			}
@@ -226,15 +246,19 @@ export default function HomeScreen() {
 	}, []);
 
 	// Helper to resolve image source
-	const getImageSource = (image: string | undefined) => {
+	const getImageSource = (image: string | undefined | null) => {
 		const localImages: Record<string, any> = {
 			'react-logo.png': require('@/assets/images/react-logo.png'),
 			'partial-react-logo.png': require('@/assets/images/partial-react-logo.png'),
 		};
-		if (image && localImages[image]) {
+		if (image && typeof image === 'string' && localImages[image]) {
 			return localImages[image];
 		}
-		// Use a default placeholder if image is missing or not mapped
+		// If image is a non-empty string (e.g. a URL), use it directly
+		if (image && typeof image === 'string' && image.trim() !== '') {
+			return { uri: image };
+		}
+		// Use a default placeholder if image is missing, null, or not mapped
 		return require('@/assets/images/react-logo.png');
 	};
 
@@ -246,6 +270,30 @@ export default function HomeScreen() {
 		return fallback;
 	};
 
+	const [refreshing, setRefreshing] = useState(false);
+	// Track filters in local state for display only
+	const [filters, setFilters] = useState<string[]>([]);
+	const [filtersMenuVisible, setFiltersMenuVisible] = useState(false);
+
+	const handleRefresh = async () => {
+		setRefreshing(true);
+		try {
+			const { data, error } = await supabase.from('dishes').select('*');
+			if (!error) {
+				setDishes(data || []);
+				setCurrentIndex(0);
+			}
+		} finally {
+			setRefreshing(false);
+		}
+	};
+
+	// Handler for FiltersBar
+	const handleFiltersChange = (newFilters: string[]) => {
+		setFilters(newFilters);
+		// Optionally, trigger a filter on dishes here if needed
+	};
+
 	if (loading) {
 		return (
 			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
@@ -253,93 +301,133 @@ export default function HomeScreen() {
 			</View>
 		);
 	}
-	if (dishes.length === 0) {
+	if (!dish) {
 		return (
-			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-				<Text>No dishes found.</Text>
+			<View style={{ flex: 1, backgroundColor: '#fff' }}>
+				<ScrollView
+					contentContainerStyle={{ minHeight: '100%', justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}
+					refreshControl={
+						<RefreshControl
+							refreshing={refreshing}
+							onRefresh={handleRefresh}
+							colors={["#A1CEDC"]}
+							tintColor="#A1CEDC"
+							title="Pull to refresh..."
+						/>
+					}
+				>
+					<View style={{ alignItems: 'center', width: '100%' }}>
+						<Text style={{ fontSize: 28, fontWeight: 'bold', color: '#A1CEDC', marginBottom: 16, textAlign: 'center' }}>No more dishes found</Text>
+						<Text style={{ color: '#888', fontSize: 16, marginBottom: 32, textAlign: 'center', paddingHorizontal: 16 }}>Pull down to refresh and see if new dishes are available!</Text>
+						<View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#E6F7FA', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#A1CEDC', shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 }}>
+							<Text style={{ fontSize: 40, color: '#A1CEDC' }}>↻</Text>
+						</View>
+						{/* Adjust Filters Button */}
+						<View style={{ width: '100%', alignItems: 'center', marginTop: 8 }}>
+							<TouchableWithoutFeedback onPress={() => setFiltersMenuVisible(true)}>
+								<View style={{ backgroundColor: '#A1CEDC', borderRadius: 24, paddingVertical: 12, paddingHorizontal: 32, marginTop: 8, shadowColor: '#A1CEDC', shadowOpacity: 0.2, shadowRadius: 8, elevation: 2 }}>
+									<Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 18 }}>Adjust Filters</Text>
+								</View>
+							</TouchableWithoutFeedback>
+						</View>
+					</View>
+				</ScrollView>
 			</View>
 		);
 	}
 
 	return (
-		<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff', paddingBottom: 0 }}>
-			{/* Render the next card behind the current card */}
-			<Animated.View
-				pointerEvents="none"
-				style={[
-					styles.card,
-					{
-						width: cardAnimWidth,
-						height: cardAnimHeight,
-						borderRadius: cardAnimBorderRadius,
-						position: 'absolute',
-						left: '5%',
-						top: '20%',
-						zIndex: 0,
-						opacity: 0.5,
-						backgroundColor: '#222',
-						transform: [
-							{ scale: backCardScale },
-							{ translateY: CARD_HEIGHT * 0.04 },
-						],
-					},
-				]}
-			>
-				<Image source={getImageSource(dishes[nextIndex].image)} style={[styles.dishImage, { borderRadius: 0, opacity: 0.7 }]} />
-				<View style={styles.overlay} pointerEvents="none">
-					<Text style={styles.dishTitle}>{getDishProp(dishes[nextIndex], 'title')}</Text>
-					<Text style={styles.likes}>{getDishProp(dishes[nextIndex], 'likes')} Likes</Text>
-				</View>
-			</Animated.View>
-			<Animated.View
-				{...(cardExpanded ? {} : (panResponder.current && (panResponder.current as any).panHandlers))}
-				style={[
-					styles.card,
-					{
-						width: cardAnimWidthValue,
-						height: cardAnimHeight,
-						borderRadius: cardAnimBorderRadius,
-						position: 'relative',
-						zIndex: cardExpanded ? 100 : 1,
-						left: cardExpanded ? 0 : undefined,
-						transform: [
-							{ translateX: cardExpanded ? 0 : position.x },
-						],
-					},
-				]}
-			>
-				<TouchableWithoutFeedback onPress={cardExpanded ? undefined : openModal}>
-					{cardExpanded ? (
-						<ExpandedDishCard dish={dish} onClose={closeModal} />
-					) : (
-						<View style={{ width: '100%', height: CARD_HEIGHT, overflow: 'hidden' }} {...(panResponder.current && (panResponder.current as any).panHandlers)}>
-							<Image source={getImageSource(dish.image)} style={[styles.dishImage, { borderRadius: 0, height: CARD_HEIGHT }]} />
-							<View style={styles.overlay} pointerEvents="none">
-								<Text style={styles.dishTitle}>{getDishProp(dish, 'title')}</Text>
-								<Text style={styles.likes}>{getDishProp(dish, 'likes')} Likes</Text>
-							</View>
+		<View style={{ flex: 1, backgroundColor: '#fff', paddingBottom: 0 }}>
+			{/* Top Filters Bar - move only the bar down, not the card stack */}
+			<View style={{ width: '100%', position: 'absolute', top: 64, left: 0, zIndex: 100, backgroundColor: 'transparent' }} pointerEvents="box-none">
+				<FiltersBar onFiltersChange={handleFiltersChange} />
+			</View>
+			{/* Center the card stack vertically and horizontally */}
+			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+				{/* Render the next card behind the current card, only if it exists */}
+				{nextIndex !== -1 && dishes[nextIndex] && (
+					<Animated.View
+						pointerEvents="none"
+						style={[
+							styles.card,
+							{
+								width: cardAnimWidthValue, // match the current card's width animation
+								height: cardAnimHeight, // match the current card's height animation
+								borderRadius: cardAnimBorderRadius,
+								position: 'absolute',
+								left: '5%',
+								top: '20%',
+								zIndex: 0,
+								opacity: 0.5,
+								backgroundColor: '#222',
+								transform: [
+									{ scale: backCardInterpolatedScale },
+									{ translateY: backCardInterpolatedTranslateY },
+								],
+							},
+						]}
+					>
+						<Image source={getImageSource(dishes[nextIndex]?.image)} style={[styles.dishImage, { borderRadius: 0, opacity: 0.7 }]} />
+						<View style={styles.overlay} pointerEvents="none">
+							<Text style={styles.dishTitle}>{getDishProp(dishes[nextIndex], 'title', '')}</Text>
+							<Text style={styles.likes}>{getDishProp(dishes[nextIndex], 'likes', '')} Likes</Text>
 						</View>
-					)}
-				</TouchableWithoutFeedback>
-			</Animated.View>
-			<SwipeIndicator direction="left" visible={showLeftIndicator} />
-			<SwipeIndicator direction="right" visible={showRightIndicator} />
+					</Animated.View>
+				)}
+				{/* Render the current card, only if it exists */}
+				{dish && (
+					<Animated.View
+						// Attach panHandlers only if card is not expanded and dish exists
+						{...(!cardExpanded ? panResponderInstance.panHandlers : {})}
+						style={[
+							styles.card,
+							{
+								width: cardAnimWidthValue,
+								height: cardAnimHeight,
+								borderRadius: cardAnimBorderRadius,
+								position: 'relative',
+								zIndex: cardExpanded ? 100 : 1,
+								left: cardExpanded ? 0 : undefined,
+								transform: [
+									{ translateX: cardExpanded ? 0 : position.x },
+								],
+							},
+						]}
+					>
+						<TouchableWithoutFeedback onPress={cardExpanded ? undefined : openModal}>
+							{cardExpanded ? (
+								<ExpandedDishCard dish={dish} onClose={closeModal} />
+							) : (
+								<View style={{ width: '100%', height: CARD_HEIGHT, overflow: 'hidden' }}>
+									<Image source={getImageSource(dish?.image)} style={[styles.dishImage, { borderRadius: 0, height: CARD_HEIGHT }]} />
+									<View style={styles.overlay} pointerEvents="none">
+										<Text style={styles.dishTitle}>{getDishProp(dish, 'title', '')}</Text>
+										<Text style={styles.likes}>{getDishProp(dish, 'likes', '')} Likes</Text>
+									</View>
+								</View>
+							)}
+						</TouchableWithoutFeedback>
+					</Animated.View>
+				)}
+				<SwipeIndicator direction="left" visible={showLeftIndicator} />
+				<SwipeIndicator direction="right" visible={showRightIndicator} />
+			</View>
 		</View>
 	);
 }
 
 const styles = StyleSheet.create({
 	card: {
-		width: CARD_WIDTH,
-		height: CARD_HEIGHT,
+		width: CARD_WIDTH * 1.15,
+		height: CARD_HEIGHT * 1.15,
 		backgroundColor: '#222',
-		borderRadius: Math.round(CARD_WIDTH * 0.045),
+		borderRadius: Math.round(CARD_WIDTH * 0.045 * 1.15),
 		alignItems: 'center',
 		justifyContent: 'center',
 		overflow: 'hidden',
 		shadowColor: '#000',
 		shadowOpacity: 0.1,
-		shadowRadius: 8,
+		shadowRadius: 8 * 1.15,
 		elevation: 4,
 	},
 	dishImage: {
@@ -348,7 +436,7 @@ const styles = StyleSheet.create({
 		position: 'absolute',
 		top: 0,
 		left: 0,
-		borderRadius: Math.round(CARD_WIDTH * 0.045),
+		borderRadius: Math.round(CARD_WIDTH * 0.045 * 1.15),
 	},
 	overlay: {
 		flex: 1,
@@ -356,34 +444,34 @@ const styles = StyleSheet.create({
 		height: '100%',
 		justifyContent: 'flex-end',
 		alignItems: 'flex-start',
-		padding: 24,
+		padding: 24 * 1.15,
 		backgroundColor: 'rgba(0,0,0,0.25)',
 	},
 	dishTitle: {
-		fontSize: 28,
+		fontSize: 28 * 1.15,
 		fontWeight: 'bold',
 		color: '#fff',
-		marginBottom: 8,
+		marginBottom: 8 * 1.15,
 		textShadowColor: '#000',
-		textShadowOffset: { width: 1, height: 1 },
-		textShadowRadius: 4,
+		textShadowOffset: { width: 1 * 1.15, height: 1 * 1.15 },
+		textShadowRadius: 4 * 1.15,
 	},
 	likes: {
-		fontSize: 18,
+		fontSize: 18 * 1.15,
 		color: '#fff',
 		fontWeight: '600',
 		textShadowColor: '#000',
-		textShadowOffset: { width: 1, height: 1 },
-		textShadowRadius: 4,
-		marginBottom: 12,
+		textShadowOffset: { width: 1 * 1.15, height: 1 * 1.15 },
+		textShadowRadius: 4 * 1.15,
+		marginBottom: 12 * 1.15,
 	},
 	indicatorLeft: {
 		position: 'absolute',
 		left: 0.08 * SCREEN_WIDTH, // 8% from left
 		top: INDICATOR_OFFSET,
-		height: INDICATOR_HEIGHT,
-		width: INDICATOR_WIDTH,
-		borderRadius: INDICATOR_WIDTH / 2,
+		height: INDICATOR_HEIGHT * 1.15,
+		width: INDICATOR_WIDTH * 1.15,
+		borderRadius: (INDICATOR_WIDTH / 2) * 1.15,
 		backgroundColor: 'rgba(255, 0, 0, 0)',
 		justifyContent: 'center',
 		alignItems: 'center',
@@ -393,9 +481,9 @@ const styles = StyleSheet.create({
 		position: 'absolute',
 		right: 0.08 * SCREEN_WIDTH, // 8% from right
 		top: INDICATOR_OFFSET,
-		height: INDICATOR_HEIGHT,
-		width: INDICATOR_WIDTH,
-		borderRadius: INDICATOR_WIDTH / 2,
+		height: INDICATOR_HEIGHT * 1.15,
+		width: INDICATOR_WIDTH * 1.15,
+		borderRadius: (INDICATOR_WIDTH / 2) * 1.15,
 		backgroundColor: 'rgba(0, 200, 0, 0)',
 		justifyContent: 'center',
 		alignItems: 'center',
@@ -403,7 +491,7 @@ const styles = StyleSheet.create({
 	},
 	indicatorText: {
 		color: '#fff',
-		fontSize: 32,
+		fontSize: 32 * 1.15,
 		fontWeight: 'bold',
 	},
 	fullscreenScroll: {
@@ -412,15 +500,15 @@ const styles = StyleSheet.create({
 	},
 	fullscreenScrollContent: {
 		alignItems: 'center',
-		paddingBottom: 40,
-		paddingTop: 40,
+		paddingBottom: 40 * 1.15,
+		paddingTop: 40 * 1.15,
 	},
 	fullscreenModalContainer: {
 		flex: 1,
 		backgroundColor: 'rgba(0,0,0,0.95)',
 		justifyContent: 'center',
 		alignItems: 'center',
-		paddingTop: 40,
+		paddingTop: 40 * 1.15,
 		paddingBottom: 0,
 	},
 	fullscreenImageCard: {
@@ -433,114 +521,114 @@ const styles = StyleSheet.create({
 	},
 	fullscreenInfoContainerWithBg: {
 		alignItems: 'center',
-		paddingBottom: 40,
+		paddingBottom: 40 * 1.15,
 		backgroundColor: 'rgba(0,0,0,0.85)',
-		borderTopLeftRadius: 32,
-		borderTopRightRadius: 32,
-		marginTop: -32,
-		paddingTop: 32,
+		borderTopLeftRadius: 32 * 1.15,
+		borderTopRightRadius: 32 * 1.15,
+		marginTop: -32 * 1.15,
+		paddingTop: 32 * 1.15,
 		width: '100%',
 		position: 'relative',
 		zIndex: 1,
 	},
 	fullscreenTitle: {
-		fontSize: 32,
+		fontSize: 32 * 1.15,
 		fontWeight: 'bold',
 		color: '#fff',
-		marginBottom: 8,
+		marginBottom: 8 * 1.15,
 		textAlign: 'center',
 	},
 	fullscreenAuthor: {
 		color: '#A1CEDC',
-		fontSize: 18,
-		marginBottom: 8,
+		fontSize: 18 * 1.15,
+		marginBottom: 8 * 1.15,
 		textAlign: 'center',
 	},
 	fullscreenLikes: {
 		color: '#fff',
-		fontSize: 18,
-		marginBottom: 16,
+		fontSize: 18 * 1.15,
+		marginBottom: 16 * 1.15,
 		textAlign: 'center',
 	},
 	fullscreenSection: {
 		fontWeight: 'bold',
 		color: '#A1CEDC',
-		marginTop: 16,
-		marginBottom: 4,
-		fontSize: 20,
+		marginTop: 16 * 1.15,
+		marginBottom: 4 * 1.15,
+		fontSize: 20 * 1.15,
 		alignSelf: 'flex-start',
 	},
 	fullscreenText: {
 		color: '#fff',
-		fontSize: 16,
+		fontSize: 16 * 1.15,
 		alignSelf: 'flex-start',
-		marginBottom: 2,
-		marginLeft: 8,
+		marginBottom: 2 * 1.15,
+		marginLeft: 8 * 1.15,
 	},
 	closeModal: {
 		color: '#A1CEDC',
 		fontWeight: 'bold',
-		fontSize: 20,
-		marginTop: 32,
+		fontSize: 20 * 1.15,
+		marginTop: 32 * 1.15,
 		alignSelf: 'center',
 		textDecorationLine: 'underline',
-		marginBottom: 40,
+		marginBottom: 40 * 1.15,
 	},
 	closeIconContainer: {
 		position: 'absolute',
-		top: 40,
-		right: 20,
+		top: 40 * 1.15,
+		right: 20 * 1.15,
 		zIndex: 10,
 	},
 	closeIconContainerAbsolute: {
 		position: 'absolute',
-		top: 64, // increased from 40 for more offset
-		right: 20,
+		top: 64 * 1.15,
+		right: 20 * 1.15,
 		zIndex: 1000,
 		backgroundColor: 'rgba(0,0,0,0.3)',
-		borderRadius: 20,
-		padding: 4,
+		borderRadius: 20 * 1.15,
+		padding: 4 * 1.15,
 	},
 	closeIcon: {
 		color: '#A1CEDC',
-		fontSize: 28,
+		fontSize: 28 * 1.15,
 		fontWeight: 'bold',
 	},
 	infoSection: {
 		flex: 1,
 		width: '100%',
 		backgroundColor: '#fff',
-		borderTopLeftRadius: 24,
-		borderTopRightRadius: 24,
-		marginTop: -24,
-		paddingTop: 32,
+		borderTopLeftRadius: 24 * 1.15,
+		borderTopRightRadius: 24 * 1.15,
+		marginTop: -24 * 1.15,
+		paddingTop: 32 * 1.15,
 	},
 	infoSectionStatic: {
 		width: '100%',
 		backgroundColor: '#fff',
-		borderTopLeftRadius: 24,
-		borderTopRightRadius: 24,
-		marginTop: -24,
-		paddingTop: 32,
-		paddingHorizontal: 24,
-		paddingBottom: 40,
+		borderTopLeftRadius: 24 * 1.15,
+		borderTopRightRadius: 24 * 1.15,
+		marginTop: -24 * 1.15,
+		paddingTop: 32 * 1.15,
+		paddingHorizontal: 24 * 1.15,
+		paddingBottom: 40 * 1.15,
 	},
 	infoSectionContent: {
-		paddingHorizontal: 24,
-		paddingBottom: 40,
+		paddingHorizontal: 24 * 1.15,
+		paddingBottom: 40 * 1.15,
 	},
 	infoSectionTitle: {
 		fontWeight: 'bold',
 		color: '#222',
-		fontSize: 20,
-		marginTop: 16,
-		marginBottom: 4,
+		fontSize: 20 * 1.15,
+		marginTop: 16 * 1.15,
+		marginBottom: 4 * 1.15,
 	},
 	infoSectionText: {
 		color: '#222',
-		fontSize: 16,
-		marginBottom: 2,
-		marginLeft: 8,
+		fontSize: 16 * 1.15,
+		marginBottom: 2 * 1.15,
+		marginLeft: 8 * 1.15,
 	},
 });
 

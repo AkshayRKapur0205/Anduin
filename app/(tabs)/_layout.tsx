@@ -37,7 +37,7 @@ export default function TabLayout() {
             case 'explore':
               return <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />;
             case 'import':
-              return <Feather name="download" size={size} color={color} />;
+              return <Ionicons name={focused ? 'add' : 'add-outline'} size={size} color={color} />;
             case 'community':
               return <MaterialCommunityIcons name={focused ? 'account-group' : 'account-group-outline'} size={size} color={color} />;
             case 'account':
@@ -49,7 +49,7 @@ export default function TabLayout() {
       })}>
       <Tabs.Screen name="index" options={{ title: 'Explore' }} />
       <Tabs.Screen name="explore" options={{ title: 'Home' }} />
-      <Tabs.Screen name="import" options={{ title: 'Import' }} />
+      <Tabs.Screen name="import" options={{ title: 'Create' }} />
       <Tabs.Screen name="community" options={{ title: 'Community' }} />
       <Tabs.Screen name="account" options={{ title: 'Account' }} />
     </Tabs>
