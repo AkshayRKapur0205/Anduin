@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../supabaseClient';
 import RecipeForm from '../components/RecipeForm';
+import * as FileSystem from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ImportScreen() {
   const [showForm, setShowForm] = useState(false);
@@ -60,8 +62,70 @@ export default function ImportScreen() {
       <RecipeForm
         visible={showForm}
         onClose={() => setShowForm(false)}
-        onSubmit={(data) => {
-          // TODO: Save the new card (call backend or update state)
+        onSubmit={async (data) => {
+          let imageUrl = '';
+          // Only upload to Supabase Storage if privacy is public
+          if (data.privacy === 'public' && data.image && data.image.startsWith('file://')) {
+            const fileExt = data.image.split('.').pop();
+            const fileName = `${Date.now()}.${fileExt}`;
+            const fileUri = data.image;
+            const fileContent = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.Base64 });
+            const { data: uploadData, error: uploadError } = await supabase.storage.from('dish-images').upload(fileName, Buffer.from(fileContent, 'base64'), {
+              contentType: `image/${fileExt}`,
+              upsert: true,
+            });
+            if (!uploadError && uploadData) {
+              imageUrl = supabase.storage.from('dish-images').getPublicUrl(fileName).data.publicUrl;
+            }
+          }
+          // Prepare ingredients and directions for storage
+          const ingredients = Array.isArray(data.ingredients)
+            ? data.ingredients.map((i: any) => typeof i === 'string' ? i : `${i.amount} ${i.unit} ${i.name}`.trim()).filter(Boolean)
+            : data.ingredients;
+          const directions = Array.isArray(data.directions)
+            ? data.directions.filter(Boolean).join('\n')
+            : data.directions;
+          if (data.privacy === 'public') {
+            // Insert new dish into Supabase
+            const { error } = await supabase.from('dishes').insert([
+              {
+                title: data.title,
+                image: imageUrl,
+                notes: data.notes,
+                ingredients,
+                directions,
+                tags: data.tags,
+                privacy: data.privacy,
+                likes: 0,
+                created_at: new Date().toISOString(),
+              },
+            ]);
+            if (error) {
+              console.error('Error saving dish:', error);
+            }
+          } else {
+            // Save private recipe locally
+            const privateRecipe = {
+              id: `private-${Date.now()}`,
+              title: data.title,
+              image: data.image,
+              notes: data.notes,
+              ingredients,
+              directions,
+              tags: data.tags,
+              privacy: data.privacy,
+              likes: 0,
+              created_at: new Date().toISOString(),
+            };
+            try {
+              const existing = await AsyncStorage.getItem('privateRecipes');
+              const recipes = existing ? JSON.parse(existing) : [];
+              recipes.unshift(privateRecipe);
+              await AsyncStorage.setItem('privateRecipes', JSON.stringify(recipes));
+            } catch (e) {
+              console.error('Error saving private recipe locally:', e);
+            }
+          }
           setShowForm(false);
         }}
       />

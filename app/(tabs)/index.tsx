@@ -6,6 +6,7 @@ import SwipeIndicator from '../components/SwipeIndicator';
 import ExpandedDishCard from '../components/ExpandedDishCard';
 import { supabase } from '../supabaseClient';
 import FiltersBar from '../components/FiltersBar';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Place these constants above the StyleSheet.create call
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -167,6 +168,33 @@ export default function HomeScreen() {
 	// Track if a tap occurred
 	const tapStart = React.useRef<{ x: number; y: number } | null>(null);
 
+	// Helper to save a recipe to local storage in the same format as the create page
+	const saveRecipeToLocal = async (recipe: any) => {
+		try {
+			const existing = await AsyncStorage.getItem('privateRecipes');
+			let recipes = existing ? JSON.parse(existing) : [];
+			// Only check for duplicates by id
+			if (!recipes.some((r: any) => r.id && recipe.id && r.id === recipe.id)) {
+				const privateRecipe = {
+					id: recipe.id || `private-${Date.now()}`,
+					title: recipe.title,
+					image: recipe.image,
+					notes: recipe.notes || '',
+					ingredients: recipe.ingredients,
+					directions: recipe.directions,
+					tags: recipe.tags || [],
+					privacy: 'private',
+					likes: recipe.likes || 0,
+					created_at: recipe.created_at || new Date().toISOString(),
+				};
+				recipes.unshift(privateRecipe);
+				await AsyncStorage.setItem('privateRecipes', JSON.stringify(recipes));
+			}
+		} catch (e) {
+			console.error('Error saving recipe locally:', e);
+		}
+	};
+
 	// PanResponder setup
 	const panResponderInstance = React.useMemo(() => PanResponder.create({
 		onStartShouldSetPanResponder: () => true,
@@ -196,8 +224,12 @@ export default function HomeScreen() {
 					toValue: { x: gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH, y: 0 },
 					duration: 200,
 					useNativeDriver: false,
-				}).start(() => {
+				}).start(async () => {
 					position.setValue({ x: 0, y: 0 });
+					// If swiped right, save to local in private format
+					if (gesture.dx > 0) {
+						await saveRecipeToLocal(dishes[currentIndex]);
+					}
 					setCurrentIndex((prev) => prev + 1);
 					setTimeout(() => setSwipeIndicator(null), 400);
 				});
@@ -208,8 +240,12 @@ export default function HomeScreen() {
 					toValue: { x: gesture.dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH, y: 0 },
 					duration: 200,
 					useNativeDriver: false,
-				}).start(() => {
+				}).start(async () => {
 					position.setValue({ x: 0, y: 0 });
+					// If swiped right, save to local in private format
+					if (gesture.dx > 0) {
+						await saveRecipeToLocal(dishes[currentIndex]);
+					}
 					setCurrentIndex((prev) => prev + 1); // dish = null, triggers 'no more dishes' screen
 					setTimeout(() => setSwipeIndicator(null), 400);
 				});
@@ -221,29 +257,6 @@ export default function HomeScreen() {
 			}
 		},
 	}), [currentIndex, dishes.length]);
-
-	useEffect(() => {
-		console.log('Supabase URL:', process.env.EXPO_PUBLIC_SUPABASE_URL);
-		console.log('Supabase ANON KEY:', process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY);
-		const fetchDishes = async () => {
-			try {
-				const { data, error } = await supabase.from('dishes').select('*');
-				if (error) {
-					console.error('Error fetching dishes from Supabase:', error);
-					setDishes([]);
-				} else {
-					console.log('Fetched dishes from Supabase:', data); // DEBUG LOG
-					setDishes(data || []);
-				}
-			} catch (error) {
-				console.error('Error fetching dishes (exception):', error);
-				setDishes([]);
-			} finally {
-				setLoading(false);
-			}
-		};
-		fetchDishes();
-	}, []);
 
 	// Helper to resolve image source
 	const getImageSource = (image: string | undefined | null) => {
@@ -293,6 +306,28 @@ export default function HomeScreen() {
 		setFilters(newFilters);
 		// Optionally, trigger a filter on dishes here if needed
 	};
+
+	// Remove loadLocalRecipes and useFocusEffect for local recipes
+	// Restore useEffect to fetch from Supabase
+	useEffect(() => {
+		setLoading(true);
+		const fetchDishes = async () => {
+			try {
+				const { data, error } = await supabase.from('dishes').select('*');
+				if (error) {
+					setDishes([]);
+				} else {
+					setDishes(data || []);
+				}
+				setCurrentIndex(0);
+			} catch (e) {
+				setDishes([]);
+			} finally {
+				setLoading(false);
+			}
+		};
+		fetchDishes();
+	}, []);
 
 	if (loading) {
 		return (
@@ -631,6 +666,3 @@ const styles = StyleSheet.create({
 		marginLeft: 8 * 1.15,
 	},
 });
-
-// NOTE: All dish info (title, ingredients, author, likes, directions, etc.) is now sourced from Firestore via the 'dishes' array.
-// There should be no local hardcoded dish data in this file.

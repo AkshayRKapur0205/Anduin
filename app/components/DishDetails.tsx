@@ -33,7 +33,7 @@ export default function DishDetails({ notes = 'No notes yet.', ingredients, dire
   };
 
   return (
-    <View style={{ minHeight: 260, backgroundColor: '#222', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginTop: 0, paddingTop: 32, paddingHorizontal: 24, paddingBottom: 40 }}>
+    <View style={{ minHeight: '100%', backgroundColor: '#222', borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginTop: 0, paddingTop: 32, paddingHorizontal: 24, paddingBottom: 40, flex: 1 }}>
       <Text style={{ fontWeight: 'bold', color: '#A1CEDC', fontSize: 22, marginTop: 16, marginBottom: 4 }}>Notes</Text>
       <Text style={{ color: '#fff', fontSize: 17, marginBottom: 12 }}>{notes}</Text>
       <Text style={{ fontWeight: 'bold', color: '#A1CEDC', fontSize: 22, marginTop: 16, marginBottom: 4 }}>Ingredients</Text>
