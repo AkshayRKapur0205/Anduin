@@ -14,7 +14,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={({ route }) => ({
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarActiveTintColor: colorScheme === 'dark' ? Colors.dark.tint : Colors.light.tint,
         tabBarInactiveTintColor: '#A1CEDC',
         headerShown: false,
         tabBarButton: HapticTab,
@@ -23,11 +23,12 @@ export default function TabLayout() {
           ios: {
             // Use a transparent background on iOS to show the blur effect
             position: 'absolute',
+            height: '10%', // Use percentage height for nav bar
           },
           default: {
-            backgroundColor: '#fff',
+            backgroundColor: colorScheme === 'dark' ? '#222' : '#fff',
             borderTopWidth: 0,
-            height: 60,
+            height: '10%', // Use percentage height for nav bar
           },
         }),
         tabBarIcon: ({ color, size, focused }) => {

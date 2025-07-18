@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Image } from 'expo-image';
-import { Platform, StyleSheet, View, Text, PanResponder, Animated, Dimensions, ScrollView, TouchableWithoutFeedback, Easing, RefreshControl } from 'react-native';
-import DishDetails from '../components/DishDetails';
-import SwipeIndicator from '../components/SwipeIndicator';
-import ExpandedDishCard from '../components/ExpandedDishCard';
-import { supabase } from '../supabaseClient';
-import FiltersBar from '../components/FiltersBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'expo-image';
+import React, { useEffect, useState } from 'react';
+import { Animated, Dimensions, Easing, PanResponder, RefreshControl, ScrollView, StyleSheet, Text, TouchableWithoutFeedback, useColorScheme, View } from 'react-native';
+import ExpandedDishCard from '../components/ExpandedDishCard';
+import FiltersBar from '../components/FiltersBar';
+import SwipeIndicator from '../components/SwipeIndicator';
+import { supabase } from '../supabaseClient';
 
 // Place these constants above the StyleSheet.create call
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -22,6 +21,7 @@ const NAV_BAR_HEIGHT = 80;
 const panResponder = React.createRef();
 
 export default function HomeScreen() {
+	const colorScheme = useColorScheme && useColorScheme() || 'light';
 	const [dishes, setDishes] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [currentIndex, setCurrentIndex] = useState(0);
@@ -329,16 +329,21 @@ export default function HomeScreen() {
 		fetchDishes();
 	}, []);
 
+	useEffect(() => {
+		// Wake up backend on startup
+		fetch('https://recipescraper-juts.onrender.com/', { method: 'GET' }).catch(() => {});
+	}, []);
+
 	if (loading) {
 		return (
-			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
-				<Text>Loading dishes...</Text>
+			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colorScheme === 'dark' ? '#181C20' : '#F5F6F8' }}>
+				<Text style={{ color: colorScheme === 'dark' ? '#fff' : '#222' }}>Loading dishes...</Text>
 			</View>
 		);
 	}
 	if (!dish) {
 		return (
-			<View style={{ flex: 1, backgroundColor: '#fff' }}>
+			<View style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#181C20' : '#F5F6F8' }}>
 				<ScrollView
 					contentContainerStyle={{ minHeight: '100%', justifyContent: 'center', alignItems: 'center', paddingTop: 40 }}
 					refreshControl={
@@ -353,7 +358,7 @@ export default function HomeScreen() {
 				>
 					<View style={{ alignItems: 'center', width: '100%' }}>
 						<Text style={{ fontSize: 28, fontWeight: 'bold', color: '#A1CEDC', marginBottom: 16, textAlign: 'center' }}>No more dishes found</Text>
-						<Text style={{ color: '#888', fontSize: 16, marginBottom: 32, textAlign: 'center', paddingHorizontal: 16 }}>Pull down to refresh and see if new dishes are available!</Text>
+						<Text style={{ color: colorScheme === 'dark' ? '#bbb' : '#888', fontSize: 16, marginBottom: 32, textAlign: 'center', paddingHorizontal: 16 }}>Pull down to refresh and see if new dishes are available!</Text>
 						<View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: '#E6F7FA', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#A1CEDC', shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 }}>
 							<Text style={{ fontSize: 40, color: '#A1CEDC' }}>↻</Text>
 						</View>
@@ -372,7 +377,7 @@ export default function HomeScreen() {
 	}
 
 	return (
-		<View style={{ flex: 1, backgroundColor: '#fff', paddingBottom: 0 }}>
+		<View style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#181C20' : '#F5F6F8', paddingBottom: 0 }}>
 			{/* Top Filters Bar - move only the bar down, not the card stack */}
 			<View style={{ width: '100%', position: 'absolute', top: 64, left: 0, zIndex: 100, backgroundColor: 'transparent' }} pointerEvents="box-none">
 				<FiltersBar onFiltersChange={handleFiltersChange} />

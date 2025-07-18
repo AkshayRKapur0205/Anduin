@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, Modal, Animated, Dimensions, StyleSheet, ScrollView } from 'react-native';
+import { Animated, Dimensions, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 interface FiltersBarProps {
   onFiltersChange?: (filters: string[]) => void;
@@ -82,6 +82,8 @@ const FiltersBar: React.FC<FiltersBarProps> = ({ onFiltersChange }) => {
   const slideAnim = React.useRef(new Animated.Value(SCREEN_WIDTH)).current;
   const [localSelected, setLocalSelected] = React.useState<string[]>(selectedFilters);
 
+  const colorScheme = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+
   React.useEffect(() => {
     if (menuVisible) {
       Animated.timing(slideAnim, {
@@ -131,12 +133,11 @@ const FiltersBar: React.FC<FiltersBarProps> = ({ onFiltersChange }) => {
       <View
         style={[
           styles.headerBar,
-          { backgroundColor: 'rgba(255,255,255,0.0)', borderBottomWidth: 0, height: 56 * 1.15, paddingHorizontal: 16 * 1.15 },
         ]}
       >
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
           {selectedFilters.length === 0 ? (
-            <Text style={{ color: '#222', fontWeight: '600', fontSize: 16 * 1.15 }}>
+            <Text style={{ color: colorScheme === 'dark' ? '#fff' : '#222', fontWeight: '600', fontSize: 16 * 1.15 }}>
               Filters: <Text style={{ color: '#A1CEDC', fontWeight: 'bold', fontSize: 16 * 1.15 }}>All</Text>
             </Text>
           ) : (
@@ -167,9 +168,10 @@ const FiltersBar: React.FC<FiltersBarProps> = ({ onFiltersChange }) => {
         </View>
         <Pressable onPress={() => setMenuVisible(true)} style={{ padding: 8 * 1.15, marginLeft: 12 * 1.15 }}>
           <View style={{ width: 28 * 1.15, height: 28 * 1.15, justifyContent: 'center', alignItems: 'center' }}>
-            <View style={{ width: 22 * 1.15, height: 3 * 1.15, backgroundColor: '#222', borderRadius: 2 * 1.15, marginBottom: 4 * 1.15 }} />
-            <View style={{ width: 22 * 1.15, height: 3 * 1.15, backgroundColor: '#222', borderRadius: 2 * 1.15, marginBottom: 4 * 1.15 }} />
-            <View style={{ width: 22 * 1.15, height: 3 * 1.15, backgroundColor: '#222', borderRadius: 2 * 1.15 }} />
+            {/* Hamburger icon: white in dark mode, black in light mode */}
+            <View style={{ width: 22 * 1.15, height: 3 * 1.15, backgroundColor: colorScheme === 'dark' ? '#fff' : '#222', borderRadius: 2 * 1.15, marginBottom: 4 * 1.15 }} />
+            <View style={{ width: 22 * 1.15, height: 3 * 1.15, backgroundColor: colorScheme === 'dark' ? '#fff' : '#222', borderRadius: 2 * 1.15, marginBottom: 4 * 1.15 }} />
+            <View style={{ width: 22 * 1.15, height: 3 * 1.15, backgroundColor: colorScheme === 'dark' ? '#fff' : '#222', borderRadius: 2 * 1.15 }} />
           </View>
         </Pressable>
       </View>
@@ -334,6 +336,17 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 200,
     right: 0,
+  },
+  // Filters label and hamburger icon color (white in dark mode, black in light mode)
+  filtersLabel: {
+    fontWeight: 'bold',
+    fontSize: 22,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  hamburgerIcon: {
+    fontSize: 28,
+    marginRight: 12,
   },
 });
 
